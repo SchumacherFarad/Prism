@@ -1,0 +1,63 @@
+# Dependencies
+node_modules/
+vendor/
+
+# Build outputs
+backend/prism
+backend/bin/
+frontend/.next/
+frontend/out/
+dist/
+build/
+
+# Config with secrets
+backend/config.yaml
+config.yaml
+
+# Database
+data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Test coverage
+coverage/
+*.out
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Playwright
+playwright/.cache/
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.prof

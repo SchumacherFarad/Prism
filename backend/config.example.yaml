@@ -1,0 +1,36 @@
+# Prism Configuration Example
+# Copy this file to config.yaml and customize with your holdings
+
+server:
+  port: "8080"
+  cors_origins:
+    - "http://localhost:3000"
+
+tefas:
+  headless: true
+  holdings:
+    - code: KUT
+      quantity: 100.0
+      cost_basis: 1200.00  # Total amount paid for shares (for P&L calculation)
+    - code: TI2
+      quantity: 50.0
+      cost_basis: 500.00
+    # Add more funds as needed...
+
+crypto:
+  binance:
+    enabled: true
+    holdings:
+      - symbol: BTCUSDT
+        quantity: 0.015
+        cost_basis: 900.00  # Total USD paid
+      - symbol: ETHUSDT
+        quantity: 0.5
+        cost_basis: 1000.00
+      # Add more crypto holdings as needed...
+  coingecko:
+    enabled: true
+    api_key: ""  # Optional, for higher rate limits
+
+database:
+  path: "./data/prism.db"
