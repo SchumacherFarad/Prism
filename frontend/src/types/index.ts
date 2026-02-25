@@ -1,5 +1,32 @@
 // API Types for Prism
 
+// Holding type
+export type HoldingType = 'fund' | 'crypto';
+
+// Holding from storage
+export interface Holding {
+  id: number;
+  type: HoldingType;
+  symbol: string;
+  quantity: number;
+  cost_basis: number;
+  created_at: string;
+  updated_at: string;
+}
+
+// Request types for holdings CRUD
+export interface CreateHoldingRequest {
+  type: HoldingType;
+  symbol: string;
+  quantity: number;
+  cost_basis: number;
+}
+
+export interface UpdateHoldingRequest {
+  quantity?: number;
+  cost_basis?: number;
+}
+
 // Fund price from TEFAS with holdings info
 export interface FundPrice {
   code: string;
@@ -59,6 +86,17 @@ export interface VersionResponse {
   version: string;
   build_time: string;
 }
+
+// Exchange rate response (USD/TRY)
+export interface ExchangeRateResponse {
+  from: string;
+  to: string;
+  rate: number;
+  last_updated: string;
+}
+
+// Display currency type
+export type DisplayCurrency = 'TRY' | 'USD';
 
 // Aura state based on portfolio performance
 export type AuraState = 'profit' | 'loss' | 'neutral';

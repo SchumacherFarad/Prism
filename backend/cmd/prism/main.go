@@ -15,6 +15,7 @@ import (
 	"github.com/ferhatkunduraci/prism/internal/providers/binance"
 	"github.com/ferhatkunduraci/prism/internal/providers/coingecko"
 	"github.com/ferhatkunduraci/prism/internal/providers/tefas"
+	"github.com/ferhatkunduraci/prism/internal/storage"
 )
 
 func main() {
@@ -32,6 +33,20 @@ func main() {
 	}
 
 	slog.Info("starting Prism server", "port", cfg.Server.Port)
+
+	// Initialize storage
+	store, err := storage.New(cfg.Database.Path)
+	if err != nil {
+		slog.Error("failed to initialize storage", "error", err)
+		os.Exit(1)
+	}
+	defer store.Close()
+
+	// Migrate holdings from config to database if database is empty
+	if err := migrateHoldingsFromConfig(store, cfg); err != nil {
+		slog.Error("failed to migrate holdings from config", "error", err)
+		// Continue anyway - this is not fatal
+	}
 
 	// Initialize providers
 	var tefasProvider providers.Provider
@@ -77,6 +92,7 @@ func main() {
 		Config:         cfg,
 		TEFASProvider:  tefasProvider,
 		CryptoProvider: cryptoProvider,
+		Storage:        store,
 	})
 
 	// Create HTTP server
@@ -125,4 +141,54 @@ func main() {
 	}
 
 	slog.Info("server stopped")
+}
+
+// migrateHoldingsFromConfig migrates holdings from config.yaml to SQLite if the database is empty
+func migrateHoldingsFromConfig(store *storage.Storage, cfg *config.Config) error {
+	ctx := context.Background()
+
+	// Check if database is empty
+	empty, err := store.IsEmpty(ctx)
+	if err != nil {
+		return err
+	}
+
+	if !empty {
+		slog.Info("holdings already exist in database, skipping migration")
+		return nil
+	}
+
+	var holdings []storage.CreateHoldingRequest
+
+	// Add TEFAS holdings
+	for _, h := range cfg.TEFAS.Holdings {
+		holdings = append(holdings, storage.CreateHoldingRequest{
+			Type:      storage.HoldingTypeFund,
+			Symbol:    h.Code,
+			Quantity:  h.Quantity,
+			CostBasis: h.CostBasis,
+		})
+	}
+
+	// Add crypto holdings
+	for _, h := range cfg.Crypto.Binance.Holdings {
+		holdings = append(holdings, storage.CreateHoldingRequest{
+			Type:      storage.HoldingTypeCrypto,
+			Symbol:    h.Symbol,
+			Quantity:  h.Quantity,
+			CostBasis: h.CostBasis,
+		})
+	}
+
+	if len(holdings) == 0 {
+		slog.Info("no holdings in config to migrate")
+		return nil
+	}
+
+	if err := store.BulkCreateHoldings(ctx, holdings); err != nil {
+		return err
+	}
+
+	slog.Info("migrated holdings from config", "count", len(holdings))
+	return nil
 }

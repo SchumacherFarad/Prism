@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
 	"sync"
 	"time"
 
@@ -93,11 +94,24 @@ func (p *Provider) Start() error {
 	slog.Info("starting TEFAS provider", "headless", p.headless)
 
 	// Initialize Playwright
+	slog.Debug("initializing Playwright runtime")
 	pw, err := playwright.Run()
 	if err != nil {
-		return fmt.Errorf("could not start playwright: %w", err)
+		slog.Warn("Playwright driver not found, attempting to install", "error", err)
+		// Try to install the driver automatically
+		if installErr := playwright.Install(); installErr != nil {
+			slog.Error("failed to install Playwright driver", "error", installErr)
+			return fmt.Errorf("could not start playwright: %w (also failed to install: %v)", err, installErr)
+		}
+		slog.Info("Playwright driver installed, retrying...")
+		pw, err = playwright.Run()
+		if err != nil {
+			slog.Error("failed to start Playwright after install", "error", err)
+			return fmt.Errorf("could not start playwright: %w", err)
+		}
 	}
 	p.pw = pw
+	slog.Debug("Playwright runtime initialized successfully")
 
 	// Launch browser with anti-detection settings
 	// Note: TEFAS WAF often blocks headless browsers
@@ -117,12 +131,23 @@ func (p *Provider) Start() error {
 		)
 	}
 
-	browser, err := pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
+	// Build launch options
+	launchOpts := playwright.BrowserTypeLaunchOptions{
 		Headless: playwright.Bool(p.headless),
 		Args:     args,
-	})
+	}
+
+	// Use system Chromium if PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH is set
+	// This is needed for Docker containers where Playwright browsers aren't installed
+	if execPath := os.Getenv("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH"); execPath != "" {
+		slog.Info("using system Chromium", "path", execPath)
+		launchOpts.ExecutablePath = playwright.String(execPath)
+	}
+
+	browser, err := pw.Chromium.Launch(launchOpts)
 	if err != nil {
 		p.pw.Stop()
+		slog.Error("failed to launch browser", "error", err, "headless", p.headless)
 		return fmt.Errorf("could not launch browser: %w", err)
 	}
 	p.browser = browser

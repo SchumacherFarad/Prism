@@ -1,9 +1,10 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useSettingsStore, usePortfolioStore } from '@/stores';
 import { useEffect } from 'react';
+import { CreateHoldingRequest, UpdateHoldingRequest } from '@/types';
 
 // Hook to fetch portfolio summary with auto-refresh
 export function usePortfolioSummary() {
@@ -76,5 +77,75 @@ export function useHealth() {
     queryFn: api.health,
     refetchInterval: 30000,
     retry: 3,
+  });
+}
+
+// ==================== Holdings Hooks ====================
+
+// Hook to fetch all holdings
+export function useHoldings(type?: 'fund' | 'crypto') {
+  return useQuery({
+    queryKey: ['holdings', type],
+    queryFn: () => api.holdings.list(type),
+    staleTime: 30000,
+  });
+}
+
+// Hook to create a new holding
+export function useCreateHolding() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: (data: CreateHoldingRequest) => api.holdings.create(data),
+    onSuccess: () => {
+      // Invalidate all related queries
+      queryClient.invalidateQueries({ queryKey: ['holdings'] });
+      queryClient.invalidateQueries({ queryKey: ['portfolio'] });
+      queryClient.invalidateQueries({ queryKey: ['funds'] });
+      queryClient.invalidateQueries({ queryKey: ['cryptos'] });
+    },
+  });
+}
+
+// Hook to update a holding
+export function useUpdateHolding() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: ({ id, data }: { id: number; data: UpdateHoldingRequest }) => 
+      api.holdings.update(id, data),
+    onSuccess: () => {
+      // Invalidate all related queries
+      queryClient.invalidateQueries({ queryKey: ['holdings'] });
+      queryClient.invalidateQueries({ queryKey: ['portfolio'] });
+      queryClient.invalidateQueries({ queryKey: ['funds'] });
+      queryClient.invalidateQueries({ queryKey: ['cryptos'] });
+    },
+  });
+}
+
+// Hook to delete a holding
+export function useDeleteHolding() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: (id: number) => api.holdings.delete(id),
+    onSuccess: () => {
+      // Invalidate all related queries
+      queryClient.invalidateQueries({ queryKey: ['holdings'] });
+      queryClient.invalidateQueries({ queryKey: ['portfolio'] });
+      queryClient.invalidateQueries({ queryKey: ['funds'] });
+      queryClient.invalidateQueries({ queryKey: ['cryptos'] });
+    },
+  });
+}
+
+// Hook to fetch exchange rate (USD/TRY)
+export function useExchangeRate() {
+  return useQuery({
+    queryKey: ['exchange-rate'],
+    queryFn: api.getExchangeRate,
+    staleTime: 60000, // Cache for 1 minute
+    refetchInterval: 5 * 60 * 1000, // Refetch every 5 minutes
   });
 }

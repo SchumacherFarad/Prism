@@ -10,6 +10,10 @@ RUN npm ci
 # Copy source
 COPY . .
 
+# Build args for NEXT_PUBLIC_* environment variables (must be set at build time)
+ARG NEXT_PUBLIC_API_URL=http://localhost:8080
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+
 # Build
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build

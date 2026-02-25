@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"gopkg.in/yaml.v3"
 )
@@ -109,6 +110,13 @@ func Load(path string) (*Config, error) {
 		path = envPath
 	}
 
+	// Get the absolute path of the config file to resolve relative paths
+	absConfigPath, err := filepath.Abs(path)
+	if err != nil {
+		return nil, fmt.Errorf("resolving config path: %w", err)
+	}
+	configDir := filepath.Dir(absConfigPath)
+
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("reading config file: %w", err)
@@ -136,6 +144,12 @@ func Load(path string) (*Config, error) {
 	}
 	if apiKey := os.Getenv("COINGECKO_API_KEY"); apiKey != "" {
 		cfg.Crypto.CoinGecko.APIKey = apiKey
+	}
+
+	// Resolve database path relative to config file directory (not working directory)
+	// This ensures the database is always found regardless of where the binary is run from
+	if !filepath.IsAbs(cfg.Database.Path) {
+		cfg.Database.Path = filepath.Join(configDir, cfg.Database.Path)
 	}
 
 	return &cfg, nil

@@ -15,10 +15,10 @@
 ## Investment Focus
 
 ### TEFAS Funds (Turkish Investment Funds)
-- KUT, TI2, AFT, YZG, KTV, HKH, IOG
+- TI2, KUT, AFT, YZG, KTV, KGM
 
 ### Crypto Holdings
-- Major pairs and specific holdings (to be configured)
+- XRPUSDT
 
 ---
 

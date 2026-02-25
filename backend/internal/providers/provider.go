@@ -2,6 +2,7 @@ package providers
 
 import (
 	"context"
+	"errors"
 	"time"
 )
 
@@ -29,6 +30,12 @@ type Provider interface {
 
 	// Close releases any resources held by the provider
 	Close() error
+}
+
+// ExchangeRateProvider defines the interface for providers that can fetch exchange rates
+type ExchangeRateProvider interface {
+	// FetchExchangeRate returns the USD/TRY exchange rate
+	FetchExchangeRate(ctx context.Context) (rate float64, lastUpdated time.Time, err error)
 }
 
 // ProviderType represents the type of data provider
@@ -83,4 +90,22 @@ func (p *FallbackProvider) Close() error {
 		return err1
 	}
 	return err2
+}
+
+// FetchExchangeRate tries to get exchange rate from underlying providers
+func (p *FallbackProvider) FetchExchangeRate(ctx context.Context) (float64, time.Time, error) {
+	// Try primary first
+	if erp, ok := p.primary.(ExchangeRateProvider); ok {
+		rate, updated, err := erp.FetchExchangeRate(ctx)
+		if err == nil {
+			return rate, updated, nil
+		}
+	}
+
+	// Try fallback
+	if erp, ok := p.fallback.(ExchangeRateProvider); ok {
+		return erp.FetchExchangeRate(ctx)
+	}
+
+	return 0, time.Time{}, errors.New("no provider supports exchange rates")
 }

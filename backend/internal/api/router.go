@@ -3,6 +3,7 @@ package api
 import (
 	"github.com/ferhatkunduraci/prism/internal/config"
 	"github.com/ferhatkunduraci/prism/internal/providers"
+	"github.com/ferhatkunduraci/prism/internal/storage"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 )
@@ -12,6 +13,7 @@ type RouterConfig struct {
 	Config         *config.Config
 	TEFASProvider  providers.Provider
 	CryptoProvider providers.Provider
+	Storage        *storage.Storage
 }
 
 // NewRouter creates and configures the Gin router
@@ -36,7 +38,7 @@ func NewRouter(rc *RouterConfig) *gin.Engine {
 	r.Use(cors.New(corsConfig))
 
 	// Initialize handlers
-	h := NewHandler(rc.Config, rc.TEFASProvider, rc.CryptoProvider)
+	h := NewHandler(rc.Config, rc.TEFASProvider, rc.CryptoProvider, rc.Storage)
 
 	// API routes
 	api := r.Group("/api")
@@ -65,6 +67,19 @@ func NewRouter(rc *RouterConfig) *gin.Engine {
 			crypto.GET("", h.GetCryptos)
 			crypto.GET("/:symbol", h.GetCrypto)
 		}
+
+		// Holdings CRUD
+		holdings := api.Group("/holdings")
+		{
+			holdings.GET("", h.GetHoldings)
+			holdings.GET("/:id", h.GetHolding)
+			holdings.POST("", h.CreateHolding)
+			holdings.PUT("/:id", h.UpdateHolding)
+			holdings.DELETE("/:id", h.DeleteHolding)
+		}
+
+		// Exchange Rate
+		api.GET("/exchange-rate", h.GetExchangeRate)
 	}
 
 	return r

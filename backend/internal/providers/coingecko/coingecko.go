@@ -25,6 +25,12 @@ type Provider struct {
 	cacheMu  sync.RWMutex
 	cacheExp time.Time
 	cacheTTL time.Duration
+
+	// Exchange rate cache
+	exchangeRate    float64
+	exchangeRateExp time.Time
+	exchangeRateMu  sync.RWMutex
+	exchangeRateTTL time.Duration
 }
 
 // Config holds CoinGecko provider configuration
@@ -44,9 +50,10 @@ func NewProvider(cfg Config) *Provider {
 		client: &http.Client{
 			Timeout: 10 * time.Second,
 		},
-		apiKey:   cfg.APIKey,
-		cache:    make(map[string]providers.Price),
-		cacheTTL: 60 * time.Second, // CoinGecko has rate limits
+		apiKey:          cfg.APIKey,
+		cache:           make(map[string]providers.Price),
+		cacheTTL:        60 * time.Second, // CoinGecko has rate limits
+		exchangeRateTTL: 5 * time.Minute,  // Exchange rate cached for 5 minutes
 	}
 }
 
@@ -178,6 +185,68 @@ func (p *Provider) IsHealthy(ctx context.Context) bool {
 // Close releases any resources
 func (p *Provider) Close() error {
 	return nil
+}
+
+// FetchExchangeRate gets the USD/TRY exchange rate using USDT price in TRY
+func (p *Provider) FetchExchangeRate(ctx context.Context) (float64, time.Time, error) {
+	// Check cache first
+	p.exchangeRateMu.RLock()
+	if time.Now().Before(p.exchangeRateExp) && p.exchangeRate > 0 {
+		rate := p.exchangeRate
+		exp := p.exchangeRateExp
+		p.exchangeRateMu.RUnlock()
+		return rate, exp, nil
+	}
+	p.exchangeRateMu.RUnlock()
+
+	slog.Info("fetching USD/TRY exchange rate from CoinGecko")
+
+	// Use USDT (Tether) price in TRY as USD/TRY proxy
+	// CoinGecko endpoint: /simple/price?ids=tether&vs_currencies=try
+	url := fmt.Sprintf("%s/simple/price?ids=tether&vs_currencies=try", baseURL)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return 0, time.Time{}, err
+	}
+
+	if p.apiKey != "" {
+		req.Header.Set("x-cg-demo-api-key", p.apiKey)
+	}
+
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return 0, time.Time{}, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return 0, time.Time{}, fmt.Errorf("unexpected status: %d", resp.StatusCode)
+	}
+
+	var result map[string]struct {
+		TRY float64 `json:"try"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return 0, time.Time{}, err
+	}
+
+	tetherData, ok := result["tether"]
+	if !ok || tetherData.TRY <= 0 {
+		return 0, time.Time{}, fmt.Errorf("invalid exchange rate response")
+	}
+
+	rate := tetherData.TRY
+	now := time.Now()
+
+	// Update cache
+	p.exchangeRateMu.Lock()
+	p.exchangeRate = rate
+	p.exchangeRateExp = now.Add(p.exchangeRateTTL)
+	p.exchangeRateMu.Unlock()
+
+	slog.Info("fetched USD/TRY exchange rate", "rate", rate)
+	return rate, now, nil
 }
 
 // symbolToCoinID converts Binance symbol to CoinGecko ID

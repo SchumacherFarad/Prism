@@ -2,23 +2,85 @@
 
 import { AuraBackground } from '@/components/aura';
 import { BentoGrid, MetricCard, AssetCard } from '@/components/bento';
-import { usePortfolioSummary, useFunds, useCryptos, useHealth } from '@/hooks';
-import { usePortfolioStore } from '@/stores';
+import { HoldingModal } from '@/components/holdings';
+import { CurrencyToggle } from '@/components/ui';
+import { usePortfolioSummary, useFunds, useCryptos, useHealth, useExchangeRate } from '@/hooks';
+import { usePortfolioStore, useEditStore, useSettingsStore } from '@/stores';
 import { motion } from 'framer-motion';
+import { Plus, Wallet, Bitcoin } from 'lucide-react';
 
 export default function Dashboard() {
   const { data: portfolio, isLoading: portfolioLoading } = usePortfolioSummary();
   const { data: funds, isLoading: fundsLoading } = useFunds();
   const { data: cryptos, isLoading: cryptosLoading } = useCryptos();
   const { data: health } = useHealth();
+  const { data: exchangeRate } = useExchangeRate();
   
   const auraState = usePortfolioStore((s) => s.auraState);
+  const { openAddModal } = useEditStore();
+  const displayCurrency = useSettingsStore((s) => s.displayCurrency);
+
+  // Get the USD/TRY rate (defaults to 1 if not loaded)
+  const usdTryRate = exchangeRate?.rate ?? 1;
 
   const formatCurrency = (value: number, currency: 'TRY' | 'USD' = 'TRY') => {
     if (currency === 'USD') {
       return `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     }
     return `₺${value.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  };
+
+  // Convert and format based on display currency
+  // originalCurrency: the native currency of the value
+  // displayCurrency: what we want to display
+  const formatWithConversion = (value: number, originalCurrency: 'TRY' | 'USD') => {
+    if (displayCurrency === originalCurrency) {
+      return formatCurrency(value, originalCurrency);
+    }
+    
+    // Convert
+    if (originalCurrency === 'TRY' && displayCurrency === 'USD') {
+      // TRY -> USD: divide by rate
+      return formatCurrency(value / usdTryRate, 'USD');
+    } else {
+      // USD -> TRY: multiply by rate
+      return formatCurrency(value * usdTryRate, 'TRY');
+    }
+  };
+
+  // Calculate total portfolio value in display currency
+  const getTotalInDisplayCurrency = () => {
+    if (!portfolio) return 0;
+    
+    if (displayCurrency === 'TRY') {
+      // TEFAS is already in TRY, crypto (USD) needs conversion
+      return portfolio.tefas_value + (portfolio.crypto_value * usdTryRate);
+    } else {
+      // Crypto is already in USD, TEFAS (TRY) needs conversion
+      return (portfolio.tefas_value / usdTryRate) + portfolio.crypto_value;
+    }
+  };
+
+  // Calculate total cost basis in display currency
+  const getTotalCostInDisplayCurrency = () => {
+    if (!portfolio) return 0;
+    
+    if (displayCurrency === 'TRY') {
+      return portfolio.tefas_cost_basis + (portfolio.crypto_cost_basis * usdTryRate);
+    } else {
+      return (portfolio.tefas_cost_basis / usdTryRate) + portfolio.crypto_cost_basis;
+    }
+  };
+
+  // Calculate total PnL in display currency
+  const getTotalPnlInDisplayCurrency = () => {
+    if (!portfolio) return 0;
+    
+    if (displayCurrency === 'TRY') {
+      return portfolio.tefas_pnl + (portfolio.crypto_pnl * usdTryRate);
+    } else {
+      return (portfolio.tefas_pnl / usdTryRate) + portfolio.crypto_pnl;
+    }
   };
 
   const isLoading = portfolioLoading || fundsLoading || cryptosLoading;
@@ -45,6 +107,9 @@ export default function Dashboard() {
             </div>
             
             <div className="flex items-center gap-4">
+              {/* Currency toggle */}
+              <CurrencyToggle />
+              
               {/* Connection status */}
               <div className="flex items-center gap-2">
                 <div className={`w-2 h-2 rounded-full ${
@@ -86,65 +151,121 @@ export default function Dashboard() {
               <BentoGrid>
                 <MetricCard
                   title="Total Portfolio"
-                  value={formatCurrency(portfolio?.total_value ?? 0)}
-                  change={portfolio?.total_pnl}
+                  value={formatCurrency(getTotalInDisplayCurrency(), displayCurrency)}
+                  change={getTotalPnlInDisplayCurrency()}
                   changePct={portfolio?.total_pnl_pct}
-                  subtitle={`Cost basis: ${formatCurrency(portfolio?.total_cost_basis ?? 0)}`}
+                  subtitle={`Cost basis: ${formatCurrency(getTotalCostInDisplayCurrency(), displayCurrency)}`}
                 />
                 <MetricCard
                   title="TEFAS Funds"
-                  value={formatCurrency(portfolio?.tefas_value ?? 0)}
-                  change={portfolio?.tefas_pnl}
-                  subtitle={`${funds?.length ?? 0} funds | Cost: ${formatCurrency(portfolio?.tefas_cost_basis ?? 0)}`}
+                  value={formatWithConversion(portfolio?.tefas_value ?? 0, 'TRY')}
+                  change={displayCurrency === 'TRY' ? portfolio?.tefas_pnl : (portfolio?.tefas_pnl ?? 0) / usdTryRate}
+                  subtitle={`${funds?.length ?? 0} funds | Cost: ${formatWithConversion(portfolio?.tefas_cost_basis ?? 0, 'TRY')}`}
                 />
                 <MetricCard
                   title="Crypto"
-                  value={formatCurrency(portfolio?.crypto_value ?? 0, 'USD')}
-                  change={portfolio?.crypto_pnl}
-                  subtitle={`${cryptos?.length ?? 0} assets | Cost: ${formatCurrency(portfolio?.crypto_cost_basis ?? 0, 'USD')}`}
+                  value={formatWithConversion(portfolio?.crypto_value ?? 0, 'USD')}
+                  change={displayCurrency === 'USD' ? portfolio?.crypto_pnl : (portfolio?.crypto_pnl ?? 0) * usdTryRate}
+                  subtitle={`${cryptos?.length ?? 0} assets | Cost: ${formatWithConversion(portfolio?.crypto_cost_basis ?? 0, 'USD')}`}
                 />
               </BentoGrid>
             </section>
 
             {/* TEFAS Funds */}
-            {funds && funds.length > 0 && (
-              <section className="mb-8">
-                <h2 className="text-xl font-semibold text-white mb-4">
+            <section className="mb-8">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-semibold text-white">
                   TEFAS Funds
                 </h2>
+                <button
+                  onClick={() => openAddModal('fund')}
+                  className="
+                    flex items-center gap-2 px-3 py-2 rounded-lg
+                    bg-white/5 hover:bg-white/10
+                    text-gray-400 hover:text-white
+                    border border-white/10
+                    transition-colors text-sm
+                  "
+                >
+                  <Plus size={16} />
+                  Add Fund
+                </button>
+              </div>
+              {funds && funds.length > 0 ? (
                 <BentoGrid>
                   {funds.map((fund) => (
                     <AssetCard key={fund.code} asset={fund} type="fund" />
                   ))}
                 </BentoGrid>
-              </section>
-            )}
+              ) : (
+                <div className="
+                  text-center py-12 rounded-2xl
+                  bg-white/5 border border-white/10 border-dashed
+                ">
+                  <Wallet size={32} className="mx-auto text-gray-500 mb-3" />
+                  <p className="text-gray-400">No TEFAS funds yet</p>
+                  <button
+                    onClick={() => openAddModal('fund')}
+                    className="
+                      mt-4 px-4 py-2 rounded-lg
+                      bg-purple-600 hover:bg-purple-500
+                      text-white text-sm font-medium
+                      transition-colors
+                    "
+                  >
+                    Add your first fund
+                  </button>
+                </div>
+              )}
+            </section>
 
             {/* Crypto */}
-            {cryptos && cryptos.length > 0 && (
-              <section className="mb-8">
-                <h2 className="text-xl font-semibold text-white mb-4">
+            <section className="mb-8">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-semibold text-white">
                   Crypto
                 </h2>
+                <button
+                  onClick={() => openAddModal('crypto')}
+                  className="
+                    flex items-center gap-2 px-3 py-2 rounded-lg
+                    bg-white/5 hover:bg-white/10
+                    text-gray-400 hover:text-white
+                    border border-white/10
+                    transition-colors text-sm
+                  "
+                >
+                  <Plus size={16} />
+                  Add Crypto
+                </button>
+              </div>
+              {cryptos && cryptos.length > 0 ? (
                 <BentoGrid>
                   {cryptos.map((crypto) => (
                     <AssetCard key={crypto.symbol} asset={crypto} type="crypto" />
                   ))}
                 </BentoGrid>
-              </section>
-            )}
-
-            {/* Empty state */}
-            {(!funds || funds.length === 0) && (!cryptos || cryptos.length === 0) && (
-              <div className="text-center py-16">
-                <p className="text-gray-400 text-lg">
-                  No assets configured yet.
-                </p>
-                <p className="text-gray-500 text-sm mt-2">
-                  Add funds and crypto symbols in your backend config.yaml
-                </p>
-              </div>
-            )}
+              ) : (
+                <div className="
+                  text-center py-12 rounded-2xl
+                  bg-white/5 border border-white/10 border-dashed
+                ">
+                  <Bitcoin size={32} className="mx-auto text-gray-500 mb-3" />
+                  <p className="text-gray-400">No crypto assets yet</p>
+                  <button
+                    onClick={() => openAddModal('crypto')}
+                    className="
+                      mt-4 px-4 py-2 rounded-lg
+                      bg-purple-600 hover:bg-purple-500
+                      text-white text-sm font-medium
+                      transition-colors
+                    "
+                  >
+                    Add your first crypto
+                  </button>
+                </div>
+              )}
+            </section>
           </>
         )}
 
@@ -158,6 +279,9 @@ export default function Dashboard() {
           </p>
         </footer>
       </main>
+
+      {/* Holdings Modal */}
+      <HoldingModal />
     </>
   );
 }
