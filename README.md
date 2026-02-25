@@ -9,17 +9,19 @@
 - **TEFAS Fund Tracking** - Real-time Turkish Investment Fund prices with Playwright-based WAF bypass
 - **Cryptocurrency Prices** - Binance API (primary) with CoinGecko fallback
 - **Holdings Management** - Track quantities, cost basis, and P&L for each asset
+- **Currency Conversion** - Toggle between TRY and USD with live USD/TRY exchange rate
 - **Dynamic Aura** - Background gradient reflects portfolio health:
   - Emerald: Profit > 2%
   - Crimson: Loss > 2%
   - Purple: Neutral
 - **Bento Box UI** - Minimalist glassmorphism design with Framer Motion animations
+- **REST API** - Full CRUD API for programmatic access
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|------------|
-| Backend | Go 1.21+, Gin, Playwright-go |
+| Backend | Go 1.23+, Gin, Playwright-go |
 | Frontend | Next.js 14, TypeScript, Tailwind CSS |
 | State | Zustand, TanStack Query |
 | Data | Binance API, CoinGecko API, TEFAS |
@@ -56,30 +58,49 @@ make dev-frontend # Frontend on :3000
 Edit `backend/config.yaml` to add your holdings:
 
 ```yaml
+server:
+  port: "8080"
+  cors_origins:
+    - "http://localhost:3000"
+
 tefas:
   headless: true
   holdings:
-    - code: KUT
-      quantity: 100.0
-      cost_basis: 1200.00
     - code: TI2
-      quantity: 50.0
-      cost_basis: 500.00
+      quantity: 101103.0
+      cost_basis: 12000
+    - code: KUT
+      quantity: 1887.0
+      cost_basis: 24000.00
+    - code: AFT
+      quantity: 13851.0
+      cost_basis: 12000.00
+    - code: YZG
+      quantity: 1422.0
+      cost_basis: 24000.00
+    - code: KTV
+      quantity: 1294.0
+      cost_basis: 6000.00
+    - code: KGM
+      quantity: 294.0
+      cost_basis: 1000.00
 
 crypto:
   binance:
     enabled: true
     holdings:
-      - symbol: BTCUSDT
-        quantity: 0.015
-        cost_basis: 900.00
-      - symbol: ETHUSDT
-        quantity: 0.5
-        cost_basis: 1000.00
+      - symbol: XRPUSDT
+        quantity: 10.0
+        cost_basis: 25.0
   coingecko:
     enabled: true
     api_key: ""  # Optional, for higher rate limits
+
+database:
+  path: "./data/prism.db"
 ```
+
+> **Note:** `cost_basis` is the total amount paid (not per-unit price).
 
 ## Screenshots
 
@@ -109,11 +130,19 @@ crypto:
 | Endpoint | Description |
 |----------|-------------|
 | `GET /api/health` | Health check with provider status |
+| `GET /api/version` | API version info |
 | `GET /api/portfolio/summary` | Full portfolio with P&L calculations |
+| `GET /api/portfolio/history` | Historical portfolio snapshots |
 | `GET /api/funds` | All TEFAS funds with holdings |
 | `GET /api/funds/:code` | Single fund details |
 | `GET /api/crypto` | All crypto with holdings |
 | `GET /api/crypto/:symbol` | Single crypto details |
+| `GET /api/exchange-rate` | Current USD/TRY exchange rate |
+| `GET /api/holdings` | List all holdings |
+| `GET /api/holdings/:id` | Get single holding |
+| `POST /api/holdings` | Create new holding |
+| `PUT /api/holdings/:id` | Update holding |
+| `DELETE /api/holdings/:id` | Delete holding |
 
 ### Example Response
 
@@ -180,6 +209,34 @@ Prism/
 ├── Makefile
 └── README.md
 ```
+
+## Docker
+
+Prism is containerized with Docker and Docker Compose.
+
+### Quick Start with Docker
+
+```bash
+# Build and start all services
+docker-compose up -d --build
+
+# View logs
+docker-compose logs -f
+
+# Stop all services
+docker-compose down
+```
+
+### Services
+
+| Service | Port | Description |
+|---------|------|-------------|
+| backend | 8080 | Go API server |
+| frontend | 3000 | Next.js dashboard |
+
+### Environment
+
+The backend reads configuration from `backend/config.yaml` which is mounted as a volume. Holdings are persisted in a Docker volume.
 
 ## Architecture
 
